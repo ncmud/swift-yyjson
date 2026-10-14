@@ -466,6 +466,49 @@ public enum YYJSONSerialization {
 
     extension YYJSONValue {
         fileprivate func toFoundationObject(options: YYJSONSerialization.ReadingOptions) throws -> Any {
+            enum Step {
+                case visit(YYJSONValue)
+                case array(Int)
+                case object([String])
+            }
+            var pending: [Step] = [.visit(self)]
+            var values: [Any] = []
+            while let step = pending.popLast() {
+                switch step {
+                case .visit(let value):
+                    if let array = value.array {
+                        pending.append(.array(array.count))
+                        pending.append(contentsOf: array.reversed().map(Step.visit))
+                    } else if let object = value.object {
+                        let entries = Array(object)
+                        pending.append(.object(entries.map { $0.key }))
+                        pending.append(contentsOf: entries.reversed().map { .visit($0.value) })
+                    } else {
+                        values.append(try value.scalarFoundationObject(options: options))
+                    }
+                case .array(let count):
+                    let children = Array(values.suffix(count))
+                    values.removeLast(count)
+                    if options.contains(.mutableContainers) {
+                        values.append(NSMutableArray(array: children))
+                    } else {
+                        values.append(NSArray(array: children))
+                    }
+                case .object(let keys):
+                    let children = values.suffix(keys.count)
+                    let dictionary = Dictionary(zip(keys, children), uniquingKeysWith: { _, last in last })
+                    values.removeLast(keys.count)
+                    if options.contains(.mutableContainers) {
+                        values.append(NSMutableDictionary(dictionary: dictionary))
+                    } else {
+                        values.append(NSDictionary(dictionary: dictionary))
+                    }
+                }
+            }
+            return values[0]
+        }
+
+        private func scalarFoundationObject(options: YYJSONSerialization.ReadingOptions) throws -> Any {
             if isNull {
                 return NSNull()
             }
@@ -517,42 +560,6 @@ public enum YYJSONSerialization {
                     return try makeMutableString(from: s)
                 }
                 return NSString(string: s)
-            }
-
-            if let arr = array {
-                let result = NSMutableArray()
-
-                for element in arr {
-                    let foundationValue = try element.toFoundationObject(options: options)
-                    result.add(foundationValue)
-                }
-
-                if options.contains(.mutableContainers) {
-                    return result
-                } else {
-                    return NSArray(array: Array(result))
-                }
-            }
-
-            if let obj = object {
-                let result = NSMutableDictionary()
-
-                for (key, value) in obj {
-                    let foundationValue = try value.toFoundationObject(options: options)
-                    result[key] = foundationValue
-                }
-
-                if options.contains(.mutableContainers) {
-                    return result
-                } else {
-                    var swiftDict: [String: Any] = [:]
-                    for (key, value) in result {
-                        if let keyString = key as? String {
-                            swiftDict[keyString] = value
-                        }
-                    }
-                    return NSDictionary(dictionary: swiftDict)
-                }
             }
 
             return NSNull()

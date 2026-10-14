@@ -346,8 +346,8 @@ import Foundation
         /// which involves a copy.
         /// For zero-allocation access in hot paths, use `.cString` instead.
         public var string: String? {
-            if case .stringPtr(let ptr, _) = storage {
-                return String(cString: ptr)
+            if case .stringPtr(let ptr, let value) = storage {
+                return String(decoding: UnsafeRawBufferPointer(start: ptr, count: yyjson_get_len(value)), as: UTF8.self)
             }
             return nil
         }
@@ -437,8 +437,8 @@ import Foundation
                 return String(n)
             case .numberRaw(let ptr):
                 return yyRawText(ptr) ?? "null"
-            case .stringPtr(let ptr, _):
-                return "\"\(String(cString: ptr))\""
+            case .stringPtr:
+                return "\"\(string ?? "")\""
             case .object(let ptr):
                 return YYJSONObject(value: ptr, document: document).description
             case .array(let ptr):
@@ -487,7 +487,12 @@ import Foundation
             var iter = yyjson_obj_iter_with(value)
             while let keyVal = yyjson_obj_iter_next(&iter) {
                 if let keyStr = yyjson_get_str(keyVal) {
-                    keys.append(String(cString: keyStr))
+                    keys.append(
+                        String(
+                            decoding: UnsafeRawBufferPointer(start: keyStr, count: yyjson_get_len(keyVal)),
+                            as: UTF8.self
+                        )
+                    )
                 }
             }
             return keys
@@ -521,7 +526,10 @@ import Foundation
             }
             let val = yyjson_obj_iter_get_val(keyVal)
             return (
-                key: String(cString: keyStr),
+                key: String(
+                    decoding: UnsafeRawBufferPointer(start: keyStr, count: yyjson_get_len(keyVal)),
+                    as: UTF8.self
+                ),
                 value: YYJSONValue(value: val, document: document)
             )
         }
