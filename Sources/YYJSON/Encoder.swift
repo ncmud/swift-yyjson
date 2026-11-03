@@ -73,6 +73,8 @@ import Foundation
                 throw YYJSONError.invalidData("Failed to encode root value")
             }
 
+            collapseDuplicateKeys(root)
+
             if writeOptions.contains(.sortedKeys) {
                 try sortObjectKeys(root)
             }
@@ -269,28 +271,28 @@ import Foundation
             guard let obj = value else { return }
             let nullVal = yyjson_mut_null(doc)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, nullVal)
+            yyObjSet(obj, keyVal, nullVal)
         }
 
         mutating func encode(_ value: Bool, forKey key: Key) throws {
             guard let obj = self.value else { return }
             let boolVal = yyjson_mut_bool(doc, value)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, boolVal)
+            yyObjSet(obj, keyVal, boolVal)
         }
 
         mutating func encode(_ value: String, forKey key: Key) throws {
             guard let obj = self.value else { return }
             let strVal = yyFromString(value, in: doc)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, strVal)
+            yyObjSet(obj, keyVal, strVal)
         }
 
         mutating func encode(_ value: Double, forKey key: Key) throws {
             guard let obj = self.value else { return }
             let numVal = encoder.numberValue(value)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, numVal)
+            yyObjSet(obj, keyVal, numVal)
         }
 
         mutating func encode(_ value: Float, forKey key: Key) throws {
@@ -301,7 +303,7 @@ import Foundation
             guard let obj = self.value else { return }
             let numVal = yyjson_mut_sint(doc, Int64(value))
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, numVal)
+            yyObjSet(obj, keyVal, numVal)
         }
 
         mutating func encode(_ value: Int8, forKey key: Key) throws {
@@ -320,14 +322,14 @@ import Foundation
             guard let obj = self.value else { return }
             let numVal = yyjson_mut_sint(doc, value)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, numVal)
+            yyObjSet(obj, keyVal, numVal)
         }
 
         mutating func encode(_ value: UInt, forKey key: Key) throws {
             guard let obj = self.value else { return }
             let numVal = yyjson_mut_uint(doc, UInt64(value))
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, numVal)
+            yyObjSet(obj, keyVal, numVal)
         }
 
         mutating func encode(_ value: UInt8, forKey key: Key) throws {
@@ -346,7 +348,7 @@ import Foundation
             guard let obj = self.value else { return }
             let numVal = yyjson_mut_uint(doc, value)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, numVal)
+            yyObjSet(obj, keyVal, numVal)
         }
 
         mutating func encode<T>(_ value: T, forKey key: Key) throws where T: Encodable {
@@ -355,21 +357,21 @@ import Foundation
             if let date = value as? Date {
                 let encodedValue = try encodeDate(date, codingPath: codingPath + [key])
                 let keyVal = yyFromString(key.stringValue, in: doc)
-                _ = yyjson_mut_obj_put(obj, keyVal, encodedValue)
+                yyObjSet(obj, keyVal, encodedValue)
                 return
             }
 
             if let data = value as? Data {
                 let encodedValue = try encodeData(data, codingPath: codingPath + [key])
                 let keyVal = yyFromString(key.stringValue, in: doc)
-                _ = yyjson_mut_obj_put(obj, keyVal, encodedValue)
+                yyObjSet(obj, keyVal, encodedValue)
                 return
             }
 
             if let decimal = value as? Decimal {
                 let encodedValue = try encoder.decimalValue(decimal, codingPath: codingPath + [key])
                 let keyVal = yyFromString(key.stringValue, in: doc)
-                _ = yyjson_mut_obj_put(obj, keyVal, encodedValue)
+                yyObjSet(obj, keyVal, encodedValue)
                 return
             }
 
@@ -384,7 +386,7 @@ import Foundation
             )
             let encodedValue = try encodeValue(value, using: encoder)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, encodedValue)
+            yyObjSet(obj, keyVal, encodedValue)
         }
 
         mutating func nestedContainer<NestedKey>(keyedBy type: NestedKey.Type, forKey key: Key)
@@ -404,7 +406,7 @@ import Foundation
             }
             let nestedObj = yyjson_mut_obj(doc)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, nestedObj)
+            yyObjSet(obj, keyVal, nestedObj)
             let encoder = _YYEncoder(
                 doc: doc,
                 value: nestedObj,
@@ -432,7 +434,7 @@ import Foundation
             }
             let nestedArr = yyjson_mut_arr(doc)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, nestedArr)
+            yyObjSet(obj, keyVal, nestedArr)
             let nestedEncoder = _YYEncoder(
                 doc: doc,
                 value: nestedArr,
@@ -479,7 +481,7 @@ import Foundation
             }
             let nestedObj = yyjson_mut_obj(doc)
             let keyVal = yyFromString(key.stringValue, in: doc)
-            _ = yyjson_mut_obj_put(obj, keyVal, nestedObj)
+            yyObjSet(obj, keyVal, nestedObj)
             return _YYEncoder(
                 doc: doc,
                 value: nestedObj,

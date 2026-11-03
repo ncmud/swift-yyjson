@@ -449,7 +449,7 @@ public enum YYJSONSerialization {
                     guard let value = dict[key] else { continue }
                     let keyVal = yyFromString(keyString, in: doc)
                     let valueVal = try foundationObjectToYYJSON(value, doc: doc, options: options)
-                    _ = yyjson_mut_obj_put(jsonObj, keyVal, valueVal)
+                    _ = yyjson_mut_obj_add(jsonObj, keyVal, valueVal)
                 }
                 return jsonObj
 
