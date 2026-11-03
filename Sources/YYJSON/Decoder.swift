@@ -30,6 +30,34 @@ import Foundation
         }
     }
 
+    /// Finds keys in an object by resuming from the previous match,
+    /// so reading keys in document order takes constant time per key.
+    final class _YYKeyCursor {
+        private var iter: yyjson_obj_iter
+        private var lastValue: UnsafeMutablePointer<yyjson_val>?
+
+        init(_ obj: UnsafeMutablePointer<yyjson_val>) {
+            iter = yyjson_obj_iter_with(obj)
+        }
+
+        func value(forKey key: String) -> UnsafeMutablePointer<yyjson_val>? {
+            var key = key
+            return key.withUTF8 { buf in
+                guard let ptr = buf.baseAddress else { return nil }
+                // contains, decodeNil and decode each look up the same key in turn.
+                // Without this check the second lookup would wrap around the whole object.
+                if let lastValue, unsafe_yyjson_equals_strn(lastValue - 1, ptr, buf.count) {
+                    return lastValue
+                }
+                let found = yyjson_obj_iter_getn(&iter, ptr, buf.count)
+                if let found {
+                    lastValue = found
+                }
+                return found
+            }
+        }
+    }
+
     /// Returns the textual representation of a numeric JSON value.
     ///
     /// The decoder enables `YYJSON_READ_NUMBER_AS_RAW`,
@@ -537,7 +565,8 @@ import Foundation
                 keyDecodingStrategy: keyDecodingStrategy,
                 dateDecodingStrategy: dateDecodingStrategy,
                 dataDecodingStrategy: dataDecodingStrategy,
-                nonConformingFloatDecodingStrategy: nonConformingFloatDecodingStrategy
+                nonConformingFloatDecodingStrategy: nonConformingFloatDecodingStrategy,
+                keyCursor: unsafe_yyjson_get_len(value) > yyLinearObjectLimit ? _YYKeyCursor(value) : nil
             )
             return KeyedDecodingContainer(container)
         }
@@ -611,6 +640,14 @@ import Foundation
         let dateDecodingStrategy: DateDecodingStrategy
         let dataDecodingStrategy: DataDecodingStrategy
         let nonConformingFloatDecodingStrategy: NonConformingFloatDecodingStrategy
+        let keyCursor: _YYKeyCursor?
+
+        private func lookup(_ jsonKey: String) -> UnsafeMutablePointer<yyjson_val>? {
+            if let keyCursor {
+                return keyCursor.value(forKey: jsonKey)
+            }
+            return yyObjGet(value, key: jsonKey)
+        }
 
         var allKeys: [Key] {
             var keys: [Key] = []
@@ -627,7 +664,7 @@ import Foundation
 
         func contains(_ key: Key) -> Bool {
             let jsonKey = encodeKey(key)
-            return yyObjGet(value, key: jsonKey) != nil
+            return lookup(jsonKey) != nil
         }
 
         private func decodeKey(_ jsonKey: String) -> CodingKey {
@@ -694,7 +731,7 @@ import Foundation
 
         func decodeNil(forKey key: Key) throws -> Bool {
             let jsonKey = encodeKey(key)
-            guard let val = yyObjGet(value, key: jsonKey) else {
+            guard let val = lookup(jsonKey) else {
                 return true
             }
             return yyjson_is_null(val)
@@ -882,7 +919,7 @@ import Foundation
 
         func decode<T>(_ type: T.Type, forKey key: Key) throws -> T where T: Decodable {
             let jsonKey = encodeKey(key)
-            let val = yyObjGet(value, key: jsonKey)
+            let val = lookup(jsonKey)
 
             // Handle special types
             if type == Date.self {
@@ -1089,7 +1126,7 @@ import Foundation
             -> KeyedDecodingContainer<NestedKey> where NestedKey: CodingKey
         {
             let jsonKey = encodeKey(key)
-            let val = yyObjGet(value, key: jsonKey)
+            let val = lookup(jsonKey)
             let decoder = _YYDecoder(
                 value: val,
                 codingPath: codingPath + [key],
@@ -1104,7 +1141,7 @@ import Foundation
 
         func nestedUnkeyedContainer(forKey key: Key) throws -> UnkeyedDecodingContainer {
             let jsonKey = encodeKey(key)
-            let val = yyObjGet(value, key: jsonKey)
+            let val = lookup(jsonKey)
             let decoder = _YYDecoder(
                 value: val,
                 codingPath: codingPath + [key],
@@ -1131,7 +1168,7 @@ import Foundation
 
         func superDecoder(forKey key: Key) throws -> Decoder {
             let jsonKey = encodeKey(key)
-            let val = yyObjGet(value, key: jsonKey)
+            let val = lookup(jsonKey)
             return _YYDecoder(
                 value: val,
                 codingPath: codingPath + [key],
@@ -1148,7 +1185,7 @@ import Foundation
             _ block: (UnsafeMutablePointer<yyjson_val>) throws -> T
         ) throws -> T {
             let jsonKey = encodeKey(key)
-            guard let val = yyObjGet(value, key: jsonKey) else {
+            guard let val = lookup(jsonKey) else {
                 throw YYJSONError.missingKey(key.stringValue, path: pathString(for: key))
             }
             return try block(val)
